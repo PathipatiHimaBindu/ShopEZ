@@ -1,128 +1,95 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.GridFSBucket = void 0;
-const error_1 = require("../error");
-const mongo_types_1 = require("../mongo_types");
-const write_concern_1 = require("../write_concern");
-const download_1 = require("./download");
-const upload_1 = require("./upload");
-const DEFAULT_GRIDFS_BUCKET_OPTIONS = {
-    bucketName: 'fs',
-    chunkSizeBytes: 255 * 1024
-};
-/**
- * Constructor for a streaming GridFS interface
- * @public
- */
-class GridFSBucket extends mongo_types_1.TypedEventEmitter {
-    constructor(db, options) {
-        super();
-        this.setMaxListeners(0);
-        const privateOptions = {
-            ...DEFAULT_GRIDFS_BUCKET_OPTIONS,
-            ...options,
-            writeConcern: write_concern_1.WriteConcern.fromOptions(options)
-        };
-        this.s = {
-            db,
-            options: privateOptions,
-            _chunksCollection: db.collection(privateOptions.bucketName + '.chunks'),
-            _filesCollection: db.collection(privateOptions.bucketName + '.files'),
-            checkedIndexes: false,
-            calledOpenUploadStream: false
-        };
+var pager = require('memory-pager')
+
+module.exports = Bitfield
+
+function Bitfield (opts) {
+  if (!(this instanceof Bitfield)) return new Bitfield(opts)
+  if (!opts) opts = {}
+  if (Buffer.isBuffer(opts)) opts = {buffer: opts}
+
+  this.pageOffset = opts.pageOffset || 0
+  this.pageSize = opts.pageSize || 1024
+  this.pages = opts.pages || pager(this.pageSize)
+
+  this.byteLength = this.pages.length * this.pageSize
+  this.length = 8 * this.byteLength
+
+  if (!powerOfTwo(this.pageSize)) throw new Error('The page size should be a power of two')
+
+  this._trackUpdates = !!opts.trackUpdates
+  this._pageMask = this.pageSize - 1
+
+  if (opts.buffer) {
+    for (var i = 0; i < opts.buffer.length; i += this.pageSize) {
+      this.pages.set(i / this.pageSize, opts.buffer.slice(i, i + this.pageSize))
     }
-    /**
-     * Returns a writable stream (GridFSBucketWriteStream) for writing
-     * buffers to GridFS. The stream's 'id' property contains the resulting
-     * file's id.
-     *
-     * @param filename - The value of the 'filename' key in the files doc
-     * @param options - Optional settings.
-     */
-    openUploadStream(filename, options) {
-        return new upload_1.GridFSBucketWriteStream(this, filename, options);
-    }
-    /**
-     * Returns a writable stream (GridFSBucketWriteStream) for writing
-     * buffers to GridFS for a custom file id. The stream's 'id' property contains the resulting
-     * file's id.
-     */
-    openUploadStreamWithId(id, filename, options) {
-        return new upload_1.GridFSBucketWriteStream(this, filename, { ...options, id });
-    }
-    /** Returns a readable stream (GridFSBucketReadStream) for streaming file data from GridFS. */
-    openDownloadStream(id, options) {
-        return new download_1.GridFSBucketReadStream(this.s._chunksCollection, this.s._filesCollection, this.s.options.readPreference, { _id: id }, options);
-    }
-    /**
-     * Deletes a file with the given id
-     *
-     * @param id - The id of the file doc
-     */
-    async delete(id) {
-        const { deletedCount } = await this.s._filesCollection.deleteOne({ _id: id });
-        // Delete orphaned chunks before returning FileNotFound
-        await this.s._chunksCollection.deleteMany({ files_id: id });
-        if (deletedCount === 0) {
-            // TODO(NODE-3483): Replace with more appropriate error
-            // Consider creating new error MongoGridFSFileNotFoundError
-            throw new error_1.MongoRuntimeError(`File not found for id ${id}`);
-        }
-    }
-    /** Convenience wrapper around find on the files collection */
-    find(filter = {}, options = {}) {
-        return this.s._filesCollection.find(filter, options);
-    }
-    /**
-     * Returns a readable stream (GridFSBucketReadStream) for streaming the
-     * file with the given name from GridFS. If there are multiple files with
-     * the same name, this will stream the most recent file with the given name
-     * (as determined by the `uploadDate` field). You can set the `revision`
-     * option to change this behavior.
-     */
-    openDownloadStreamByName(filename, options) {
-        let sort = { uploadDate: -1 };
-        let skip = undefined;
-        if (options && options.revision != null) {
-            if (options.revision >= 0) {
-                sort = { uploadDate: 1 };
-                skip = options.revision;
-            }
-            else {
-                skip = -options.revision - 1;
-            }
-        }
-        return new download_1.GridFSBucketReadStream(this.s._chunksCollection, this.s._filesCollection, this.s.options.readPreference, { filename }, { ...options, sort, skip });
-    }
-    /**
-     * Renames the file with the given _id to the given string
-     *
-     * @param id - the id of the file to rename
-     * @param filename - new name for the file
-     */
-    async rename(id, filename) {
-        const filter = { _id: id };
-        const update = { $set: { filename } };
-        const { matchedCount } = await this.s._filesCollection.updateOne(filter, update);
-        if (matchedCount === 0) {
-            throw new error_1.MongoRuntimeError(`File with id ${id} not found`);
-        }
-    }
-    /** Removes this bucket's files collection, followed by its chunks collection. */
-    async drop() {
-        await this.s._filesCollection.drop();
-        await this.s._chunksCollection.drop();
-    }
+    this.byteLength = opts.buffer.length
+    this.length = 8 * this.byteLength
+  }
 }
-/**
- * When the first call to openUploadStream is made, the upload stream will
- * check to see if it needs to create the proper indexes on the chunks and
- * files collections. This event is fired either when 1) it determines that
- * no index creation is necessary, 2) when it successfully creates the
- * necessary indexes.
- * @event
- */
-GridFSBucket.INDEX = 'index';
-exports.GridFSBucket = GridFSBucket;
-//# sourceMappingURL=index.js.map
+
+Bitfield.prototype.get = function (i) {
+  var o = i & 7
+  var j = (i - o) / 8
+
+  return !!(this.getByte(j) & (128 >> o))
+}
+
+Bitfield.prototype.getByte = function (i) {
+  var o = i & this._pageMask
+  var j = (i - o) / this.pageSize
+  var page = this.pages.get(j, true)
+
+  return page ? page.buffer[o + this.pageOffset] : 0
+}
+
+Bitfield.prototype.set = function (i, v) {
+  var o = i & 7
+  var j = (i - o) / 8
+  var b = this.getByte(j)
+
+  return this.setByte(j, v ? b | (128 >> o) : b & (255 ^ (128 >> o)))
+}
+
+Bitfield.prototype.toBuffer = function () {
+  var all = alloc(this.pages.length * this.pageSize)
+
+  for (var i = 0; i < this.pages.length; i++) {
+    var next = this.pages.get(i, true)
+    var allOffset = i * this.pageSize
+    if (next) next.buffer.copy(all, allOffset, this.pageOffset, this.pageOffset + this.pageSize)
+  }
+
+  return all
+}
+
+Bitfield.prototype.setByte = function (i, b) {
+  var o = i & this._pageMask
+  var j = (i - o) / this.pageSize
+  var page = this.pages.get(j, false)
+
+  o += this.pageOffset
+
+  if (page.buffer[o] === b) return false
+  page.buffer[o] = b
+
+  if (i >= this.byteLength) {
+    this.byteLength = i + 1
+    this.length = this.byteLength * 8
+  }
+
+  if (this._trackUpdates) this.pages.updated(page)
+
+  return true
+}
+
+function alloc (n) {
+  if (Buffer.alloc) return Buffer.alloc(n)
+  var b = new Buffer(n)
+  b.fill(0)
+  return b
+}
+
+function powerOfTwo (x) {
+  return !(x & (x - 1))
+}
