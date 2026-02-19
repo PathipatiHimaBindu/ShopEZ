@@ -1,95 +1,63 @@
-var pager = require('memory-pager')
+/**
+ * Export lib/mongoose
+ *
+ */
 
-module.exports = Bitfield
+'use strict';
 
-function Bitfield (opts) {
-  if (!(this instanceof Bitfield)) return new Bitfield(opts)
-  if (!opts) opts = {}
-  if (Buffer.isBuffer(opts)) opts = {buffer: opts}
+const mongoose = require('./lib/');
 
-  this.pageOffset = opts.pageOffset || 0
-  this.pageSize = opts.pageSize || 1024
-  this.pages = opts.pages || pager(this.pageSize)
+module.exports = mongoose;
+module.exports.default = mongoose;
+module.exports.mongoose = mongoose;
 
-  this.byteLength = this.pages.length * this.pageSize
-  this.length = 8 * this.byteLength
+// Re-export for ESM support
+module.exports.cast = mongoose.cast;
+module.exports.STATES = mongoose.STATES;
+module.exports.setDriver = mongoose.setDriver;
+module.exports.set = mongoose.set;
+module.exports.get = mongoose.get;
+module.exports.createConnection = mongoose.createConnection;
+module.exports.connect = mongoose.connect;
+module.exports.disconnect = mongoose.disconnect;
+module.exports.startSession = mongoose.startSession;
+module.exports.pluralize = mongoose.pluralize;
+module.exports.model = mongoose.model;
+module.exports.deleteModel = mongoose.deleteModel;
+module.exports.modelNames = mongoose.modelNames;
+module.exports.plugin = mongoose.plugin;
+module.exports.connections = mongoose.connections;
+module.exports.version = mongoose.version;
+module.exports.Mongoose = mongoose.Mongoose;
+module.exports.Schema = mongoose.Schema;
+module.exports.SchemaType = mongoose.SchemaType;
+module.exports.SchemaTypes = mongoose.SchemaTypes;
+module.exports.VirtualType = mongoose.VirtualType;
+module.exports.Types = mongoose.Types;
+module.exports.Query = mongoose.Query;
+module.exports.Model = mongoose.Model;
+module.exports.Document = mongoose.Document;
+module.exports.ObjectId = mongoose.ObjectId;
+module.exports.isValidObjectId = mongoose.isValidObjectId;
+module.exports.isObjectIdOrHexString = mongoose.isObjectIdOrHexString;
+module.exports.syncIndexes = mongoose.syncIndexes;
+module.exports.Decimal128 = mongoose.Decimal128;
+module.exports.Mixed = mongoose.Mixed;
+module.exports.Date = mongoose.Date;
+module.exports.Number = mongoose.Number;
+module.exports.Error = mongoose.Error;
+module.exports.MongooseError = mongoose.MongooseError;
+module.exports.now = mongoose.now;
+module.exports.CastError = mongoose.CastError;
+module.exports.SchemaTypeOptions = mongoose.SchemaTypeOptions;
+module.exports.mongo = mongoose.mongo;
+module.exports.mquery = mongoose.mquery;
+module.exports.sanitizeFilter = mongoose.sanitizeFilter;
+module.exports.trusted = mongoose.trusted;
+module.exports.skipMiddlewareFunction = mongoose.skipMiddlewareFunction;
+module.exports.overwriteMiddlewareResult = mongoose.overwriteMiddlewareResult;
 
-  if (!powerOfTwo(this.pageSize)) throw new Error('The page size should be a power of two')
-
-  this._trackUpdates = !!opts.trackUpdates
-  this._pageMask = this.pageSize - 1
-
-  if (opts.buffer) {
-    for (var i = 0; i < opts.buffer.length; i += this.pageSize) {
-      this.pages.set(i / this.pageSize, opts.buffer.slice(i, i + this.pageSize))
-    }
-    this.byteLength = opts.buffer.length
-    this.length = 8 * this.byteLength
-  }
-}
-
-Bitfield.prototype.get = function (i) {
-  var o = i & 7
-  var j = (i - o) / 8
-
-  return !!(this.getByte(j) & (128 >> o))
-}
-
-Bitfield.prototype.getByte = function (i) {
-  var o = i & this._pageMask
-  var j = (i - o) / this.pageSize
-  var page = this.pages.get(j, true)
-
-  return page ? page.buffer[o + this.pageOffset] : 0
-}
-
-Bitfield.prototype.set = function (i, v) {
-  var o = i & 7
-  var j = (i - o) / 8
-  var b = this.getByte(j)
-
-  return this.setByte(j, v ? b | (128 >> o) : b & (255 ^ (128 >> o)))
-}
-
-Bitfield.prototype.toBuffer = function () {
-  var all = alloc(this.pages.length * this.pageSize)
-
-  for (var i = 0; i < this.pages.length; i++) {
-    var next = this.pages.get(i, true)
-    var allOffset = i * this.pageSize
-    if (next) next.buffer.copy(all, allOffset, this.pageOffset, this.pageOffset + this.pageSize)
-  }
-
-  return all
-}
-
-Bitfield.prototype.setByte = function (i, b) {
-  var o = i & this._pageMask
-  var j = (i - o) / this.pageSize
-  var page = this.pages.get(j, false)
-
-  o += this.pageOffset
-
-  if (page.buffer[o] === b) return false
-  page.buffer[o] = b
-
-  if (i >= this.byteLength) {
-    this.byteLength = i + 1
-    this.length = this.byteLength * 8
-  }
-
-  if (this._trackUpdates) this.pages.updated(page)
-
-  return true
-}
-
-function alloc (n) {
-  if (Buffer.alloc) return Buffer.alloc(n)
-  var b = new Buffer(n)
-  b.fill(0)
-  return b
-}
-
-function powerOfTwo (x) {
-  return !(x & (x - 1))
-}
+// The following properties are not exported using ESM because `setDriver()` can mutate these
+// module.exports.connection = mongoose.connection;
+// module.exports.Collection = mongoose.Collection;
+// module.exports.Connection = mongoose.Connection;
